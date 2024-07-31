@@ -1,7 +1,6 @@
 "use strict";
 
 const dgram = require("dgram");
-const { buildConnector } = require("undici-types");
 const Buffer = require("buffer").Buffer;
 const urlParse = require("url").parse;
 const crypto = require("crypto");
@@ -12,22 +11,20 @@ module.exports.getPeers = (torrent, callback) => {
   const socket = dgram.createSocket("udp4");
   const url = urlParse(torrent.announce.toString("utf8"));
 
-  // 1. Send connect request
-  updSend(socket, buildConnReq(), url);
+  // Send connect request
+  udpSend(socket, buildConnReq(), url);
 
-  socket.on("message", (response) => {
-    if (respType(response === "connect")) {
-      // 2. Receive response and parse it
+  socket.on('message', response => {
+    if (respType(response) === 'connect') {
+      // receive and parse connect response
       const connResp = parseConnResp(response);
-
-      //3. Send announce req
+      // send announce request
       const announceReq = buildAnnounceReq(connResp.connectionId, torrent);
       udpSend(socket, announceReq, url);
-    } else if (respType(response) === "announce") {
-      // 4. Parse announce response
+    } else if (respType(response) === 'announce') {
+      // parse announce response
       const announceResp = parseAnnounceResp(response);
-
-      // 5. Pass peers to callback
+      // pass peers to callback
       callback(announceResp.peers);
     }
   });
@@ -39,7 +36,9 @@ function udpSend(socket, message, rawUrl, callback = () => []) {
 }
 
 function respType(resp) {
-  // ...
+  const action = resp.readUInt32BE(0);
+  if (action === 0) return "connect";
+  if (action === 1) return "announce";
 }
 
 function buildConnReq() {
