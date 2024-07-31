@@ -1,22 +1,23 @@
+"use strict";
+
 const net = require("net");
 const Buffer = require("buffer").Buffer;
 const tracker = require("./tracker");
 const message = require("./message");
+const pieces = require("./pieces");
 
-"use strict";
 
 
 module.exports = (torrent) => {
-    const requested = [];
     // Get the list of peers from the tracker
     tracker.getPeers(torrent, (peers) => {
+        const pieces = new Pieces(torrent.info.pieces.length / 20);
         // For each peer, initiate the download
-        peers.forEach((peer) => download(peer, torrent, requested));
+        peers.forEach((peer) => download(peer, torrent, pieces));
     });
 };
 
 function download(peer) {
-    const queue = [];
     const socket = net.Socket();
     socket.on("error", console.log);
     socket.connect(peer.port, peer.ip, () => {
@@ -24,9 +25,10 @@ function download(peer) {
         socket.write(message.buildHandshake(torrent));
     });
 
+    const queue = [];
     // Call the `onWholeMsg` function passing the `socket` and a callback function
     // The callback function will handle the received message by calling `msgHandler` with the message and the socket
-    onWholeMsg(socket, (msg) => msgHandler(msg, socket, requested, queue));
+    onWholeMsg(socket, (msg) => msgHandler(msg, socket, pieces, queue));
 }
 
 // This function handles the received message and performs actions based on its content
@@ -38,11 +40,11 @@ function msgHandler(msg, socket) {
     } else {
         const m = message.parse(msg);
 
-        if (m.id === 0) chokeHandler();
-        if (m.id === 1) unchokeHandler();
-        if (m.id === 4) haveHandler(m.payload, socket, requested, queue);
+        if (m.id === 0) chokeHandler(socket);
+        if (m.id === 1) unchokeHandler(socket, pieces, queue);
+        if (m.id === 4) haveHandler(m.payload);
         if (m.id === 5) bitfieldHandler(m.payload);
-        if (m.id === 7) pieceHandler(m.payload, socket, requested, queue);
+        if (m.id === 7) pieceHandler(m.payload);
     }
 }
 
@@ -102,15 +104,15 @@ module.exports.parse = (msg) => {
 };
 
 function chokeHandler() {
-    //...
+    socket.end();
 }
 
-function unchokeHandler() {
-    //...
+function unchokeHandler(socket,pieces,queue) {
+    queue.choked = false;
+    requestPiece(socket,pieces,queue);
 }
 
 function haveHandler(payload) {
-    //...
     // Extract the piece index from the payload
     const pieceIndex = payload.readInt32BE(0);
     // Add the piece index to the queue
@@ -124,7 +126,7 @@ function haveHandler(payload) {
 
     // If the queue has only one piece, initiate the request for that piece
     if (queue.length === 1) {
-        requestPiece(socket, requested, queue);
+        requestPiece(socket, request, queue);
     }
 }
 
@@ -136,10 +138,14 @@ function pieceHandler(payload) {
     //...
 }
 
-function requestPiece(socket, requested, queue) {
-    if (requested[queue[0]]) {
-        queue.shift();
-    } else {
-        socket.write(message.buildRequest(pieceIndex));
-    }
+function requestPiece(socket, pieces, queue) {
+    if (queue.choked) return null;
+   while (queue.queue.length) {
+     const pieceIndex = queue.shift();
+     if (pieces.needed(pieceIndex)) {
+         socket.write(message.buildRequest(pieceIndex));
+         pieces.addRequested(pieceIndex);
+         break;
+     }
+   }
 }
