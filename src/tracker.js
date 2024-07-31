@@ -5,7 +5,7 @@ const Buffer = require("buffer").Buffer;
 const urlParse = require("url").parse;
 const crypto = require("crypto");
 const torrentParser = require("./torrent-parser");
-const util = require("./util");
+const util = require("../util");
 
 module.exports.getPeers = (torrent, callback) => {
   const socket = dgram.createSocket("udp4");
@@ -14,14 +14,14 @@ module.exports.getPeers = (torrent, callback) => {
   // Send connect request
   udpSend(socket, buildConnReq(), url);
 
-  socket.on('message', response => {
-    if (respType(response) === 'connect') {
+  socket.on("message", (response) => {
+    if (respType(response) === "connect") {
       // receive and parse connect response
       const connResp = parseConnResp(response);
       // send announce request
       const announceReq = buildAnnounceReq(connResp.connectionId, torrent);
       udpSend(socket, announceReq, url);
-    } else if (respType(response) === 'announce') {
+    } else if (respType(response) === "announce") {
       // parse announce response
       const announceResp = parseAnnounceResp(response);
       // pass peers to callback
