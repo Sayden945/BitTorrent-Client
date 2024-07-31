@@ -2,6 +2,11 @@
 
 const fs = require("fs"); // Import the file system module to interact with the file system
 const bencode = require("bencode"); // Import the bencode module to encode and decode bencoded data
+const tracker = require("./tracker"); // Import the tracker module to interact with the tracker
+const torrentParser = require("./torrent-parser"); // Import the torrent-parser module to parse the torrent file
 
-const torrent = bencode.decode(fs.readFileSync("puppy.torrent")); // Synchronously read the content of the file 'puppy.torrent'
-console.log(torrent.announce.toString("utf8")); // Convert the file content to a UTF-8 string and log it to the console
+const torrent = torrentParser.open("puppy.torrent"); // Decode the torrent file into a JavaScript object
+
+tracker.getPeers(torrent, (peers) => {
+  console.log("list of peers: ", peers);
+});
