@@ -28,21 +28,29 @@ function download(peer) {
 
 // This function handles the received message and performs actions based on its content
 function msgHandler(msg, socket) {
-    // Check if the received message is a handshake
-    if (isHandshake(msg)) {
-        // If it is a handshake, send an 'interested' message to the peer
-        socket.write(message.buildInterested());
-    }
+  // Check if the received message is a handshake
+  if (isHandshake(msg)) {
+    // If it is a handshake, send an 'interested' message to the peer
+    socket.write(message.buildInterested());
+  } else {
+    const m = message.parse(msg);
+
+    if (m.id === 0) chokeHandler();
+    if (m.id === 1) unchokeHandler();
+    if (m.id === 4) haveHandler(m.payload);
+    if (m.id === 5) bitfieldHandler(m.payload);
+    if (m.id === 7) pieceHandler(m.payload);
+  }
 }
 
 // This function checks if the received message is a handshake
 function isHandshake(msg) {
-    // Check if the length of the message matches the expected length for a handshake
-    // and if the message starts with the string 'BitTorrent protocol'
-    return (
-        msg.length === msg.readUInt8(0) + 49 &&
-        msg.toString("utf8", 1) === "BitTorrent protocol"
-    );
+  // Check if the length of the message matches the expected length for a handshake
+  // and if the message starts with the string 'BitTorrent protocol'
+  return (
+    msg.length === msg.readUInt8(0) + 49 &&
+    msg.toString("utf8", 1) === "BitTorrent protocol"
+  );
 }
 
 // This function handles receiving data from the socket and processing it as complete messages
@@ -64,4 +72,48 @@ function onWholeMsg(socket, callback) {
       handshake = false;
     }
   });
+}
+
+module.exports.parse = (msg) => {
+  // Extract the message ID from the received message
+  const id = msg.length > 4 ? msg.readUInt8(4) : null;
+  // Initialize the payload variable
+  let payload = msg.length > 5 ? msg.slice(5) : null;
+  // Check if the message ID corresponds to a 'piece', 'cancel', or 'request' message
+  if (id === 6 || id === 7 || id === 8) {
+    // Parse the payload for 'piece', 'cancel', or 'request' messages
+    payload = {
+      index: payload.readInt32BE(0),
+      begin: payload.readInt32BE(4),
+    };
+  }
+  // Assign the 'block' or 'length' property to the payload based on the message ID
+  payload[id === 7 ? "block" : "length"] = rest;
+
+  // Return the parsed message object
+  return {
+    size: msg.readInt32BE(0),
+    id: id,
+    payload: payload,
+  };
+};
+
+function chokeHandler() {
+  //...
+}
+
+function unchokeHandler() {
+  //...
+}
+
+function haveHandler(payload) {
+  //...
+}
+
+function bitfieldHandler(payload) {
+  //...
+}
+
+function pieceHandler(payload) {
+  //...
 }
