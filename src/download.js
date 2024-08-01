@@ -7,13 +7,13 @@ const message = require("./message");
 const pieces = require("./pieces");
 const Queue = require("./queue");
 
-module.exports = (torrent) => {
+module.exports = (torrent, path) => {
   // Get the list of peers from the tracker
   tracker.getPeers(torrent, (peers) => {
     const pieces = new Pieces(torrent);
-
+    const file = fs.openSyc(path, "w");
     // For each peer, initiate the download
-    peers.forEach((peer) => download(peer, torrent, pieces));
+    peers.forEach((peer) => download(peer, torrent, pieces, file));
   });
 };
 
@@ -112,41 +112,80 @@ function unchokeHandler(socket, pieces, queue) {
   requestPiece(socket, pieces, queue);
 }
 
-function haveHandler(payload) {
+// This function handles the 'have' message received from the peer
+function haveHandler(socket, pieces, queue, payload) {
   // Extract the piece index from the payload
   const pieceIndex = payload.readInt32BE(0);
-  // Add the piece index to the queue
-  queue.push(pieceIndex);
-  // If the piece has not been requested yet, send a request message to the peer
-  if (!requested[pieceIndex]) {
-    // socket.write(message.buildRequest(...));
-  }
-  // Mark the piece as requested
-  requested[pieceIndex] = true;
 
-  // If the queue has only one piece, initiate the request for that piece
-  if (queue.length === 1) {
-    requestPiece(socket, request, queue);
+  // Check if the queue is empty
+  const queueEmpty = queue.length === 0;
+
+  // Queue the piece index
+  queue.queue(pieceIndex);
+
+  // If the queue was empty, request a piece from the peer
+  if (queueEmpty) {
+    requestPiece(socket, pieces, queue);
   }
 }
 
+// This function handles the 'bitfield' message received from the peer
 function bitfieldHandler(payload) {
-  //...
+  const queueEmpty = queue.length === 0;
+  // Iterate through each byte in the payload
+  payload.forEach((byte, i) => {
+    // Iterate through each bit in the byte
+    for (let j = 0; j < 8; j++) {
+      // Check if the bit is set to 1
+      if (byte % 2) {
+        // Calculate the piece index and enqueue it
+        queue.queue(i * 8 + 7 - j);
+      }
+      // Shift the bits to the right by 1
+      byte = Math.floor(byte / 2);
+    }
+  });
+  if (queueEmpty) requestPiece(socket, pieces, queue);
 }
 
-function pieceHandler(payload) {
-  //...
+// This function handles the 'piece' message received from the peer
+function pieceHandler(socket, pieces, queue, torrent, pieceResp) {
+  console.log(pieceResp);
+  // Add the received piece to the list of received pieces
+  pieces.addReceived(pieceResp);
+
+  const offset =
+    pieceResp.index * torrent.info["piece length"] + pieceResp.begin;
+  fs.write(file, pieceResp.block, 0, pieceResp.block.length, offset, () => {});
+
+  // Check if all the pieces have been downloaded
+  if (pieces.isDone()) {
+    // If all the pieces have been downloaded, close the socket and log a completion message
+    socket.end();
+    console.log("Download is complete");
+  } else {
+    // If there are still pieces remaining, request the next piece from the peer
+    requestPiece(socket, pieces, queue);
+  }
 }
 
+// This function is responsible for requesting a piece from the peer
 function requestPiece(socket, pieces, queue) {
+  // If the peer is choked, do not send any requests
   if (queue.choked) return null;
 
+  // Iterate through the queue until a needed piece is found
   while (queue.length) {
+    // Dequeue a piece block from the queue
     const pieceBlock = queue.deque();
 
+    // Check if the piece block is needed
     if (pieces.needed(pieceBlock)) {
+      // If the piece block is needed, send a request message to the peer
       socket.write(message.buildRequest(pieceBlock));
+      // Add the piece block to the requested list
       pieces.addRequested(pieceBlock);
+      // Break the loop after sending the request
       break;
     }
   }
