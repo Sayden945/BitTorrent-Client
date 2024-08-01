@@ -5,7 +5,7 @@ const Buffer = require("buffer").Buffer;
 const urlParse = require("url").parse;
 const crypto = require("crypto");
 const torrentParser = require("./torrent-parser");
-const util = require("../util");
+const util = require("./util");
 
 module.exports.getPeers = (torrent, callback) => {
   const socket = dgram.createSocket("udp4");
@@ -13,6 +13,7 @@ module.exports.getPeers = (torrent, callback) => {
 
   // Send connect request
   udpSend(socket, buildConnReq(), url);
+  console.log("Socket initialized:", socket);
 
   socket.on("message", (response) => {
     if (respType(response) === "connect") {
@@ -32,17 +33,18 @@ module.exports.getPeers = (torrent, callback) => {
 
 function udpSend(socket, message, rawUrl, callback = () => []) {
   const url = urlParse(rawUrl);
-  socket.send(message, 0, message.length, url.port, url.host, callback);
+
+  socket.send(message, 0, message.length, url.port, url.hostname, callback);
 }
 
-function respType(resp) {
-  const action = resp.readUInt32BE(0);
+function respType(response) {
+  const action = response.readUInt32BE(0);
   if (action === 0) return "connect";
   if (action === 1) return "announce";
 }
 
 function buildConnReq() {
-  const buf = Buffer.alloc(16); // Allocate 16 byte buffer
+  const buf = Buffer.allocUnsafe(16); // Allocate 16 byte buffer
 
   // connection id
   buf.writeUInt32BE(0x417, 0); // 0x417: connection id offset 0 bytes

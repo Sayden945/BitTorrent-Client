@@ -1,5 +1,6 @@
 "use strict";
 
+const fs = require("fs");
 const net = require("net");
 const Buffer = require("buffer").Buffer;
 const tracker = require("./tracker");
@@ -16,6 +17,21 @@ module.exports = (torrent, path) => {
     peers.forEach((peer) => download(peer, torrent, pieces, file));
   });
 };
+
+function download(peer) {
+  const socket = new net.Socket();
+
+  socket.on("error", console.log);
+  socket.connect(peer.port, peer.ip, () => {
+    // Once connected to the peer, write data to the socket
+    socket.write(message.buildHandshake(torrent));
+  });
+
+  const queue = new Queue(torrent);
+  // Call the `onWholeMsg` function passing the `socket` and a callback function
+  // The callback function will handle the received message by calling `msgHandler` with the message and the socket
+  onWholeMsg(socket, (msg) => msgHandler(msg, socket, pieces, queue));
+}
 
 module.exports.parse = (msg) => {
   // Extract the message ID from the received message
@@ -40,20 +56,6 @@ module.exports.parse = (msg) => {
     payload: payload,
   };
 };
-
-function download(peer) {
-  const socket = net.Socket();
-  socket.on("error", console.log);
-  socket.connect(peer.port, peer.ip, () => {
-    // Once connected to the peer, write data to the socket
-    socket.write(message.buildHandshake(torrent));
-  });
-
-  const queue = new Queue(torrent);
-  // Call the `onWholeMsg` function passing the `socket` and a callback function
-  // The callback function will handle the received message by calling `msgHandler` with the message and the socket
-  onWholeMsg(socket, (msg) => msgHandler(msg, socket, pieces, queue));
-}
 
 // This function handles the received message and performs actions based on its content
 function msgHandler(msg, socket) {

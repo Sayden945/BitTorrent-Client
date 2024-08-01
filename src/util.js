@@ -7,7 +7,7 @@ let id = null;
 module.exports.genId = () => {
   if (!id) {
     id = crypto.randomBytes(20);
-    Buffer.from("-ST0001-").copy(id, 0);
+    Buffer.from("-AT0001-").copy(id, 0);
   }
   return id;
 };

@@ -4,17 +4,10 @@ const fs = require("fs");
 const bencode = require("bencode");
 const crypto = require("crypto");
 
+module.exports.BLOCK_LEN = Math.pow(2, 14);
+
 module.exports.open = (filepath) => {
   return bencode.decode(fs.readFileSync(filepath));
-};
-
-// Calculate the size of the torrent
-module.exports.size = (torrent) => {
-  const size = torrent.info.files
-    ? torrent.info.files.map((file) => file.length).reduce((a, b) => a + b) // If the torrent has multiple files, sum up their lengths
-    : torrent.info.length; // If the torrent has a single file, use its length
-
-  return BigInt.toBuffer(size, { size: 8 }); // Convert the size to a buffer
 };
 
 module.exports.infoHash = (torrent) => {
@@ -22,11 +15,22 @@ module.exports.infoHash = (torrent) => {
   return crypto.createHash("sha1").update(info).digest();
 };
 
-module.exports.BLOCK_LEN = Math.pow(2, 14); // 16KB
+// Calculate the size of the torrent
+module.exports.size = (torrent) => {
+  const buf = Buffer.alloc(8);
+
+  const size = torrent.info.files
+    ? torrent.info.files.map((file) => file.length).reduce((a, b) => a + b) // If the torrent has multiple files, sum up their lengths
+    : torrent.info.length; // If the torrent has a single file, use its length
+
+  buf.writeBigInt64BE(BigInt(size));
+
+  return buf;
+};
 
 // Calculate the length of a specific piece in the torrent
 module.exports.pieceLen = (torrent, pieceIndex) => {
-  const totalLength = BigInt.fromBuffer(this.size(torrent)).toNumber(); // Get the total length of the torrent
+  const totalLength = Number(this.size(torrent).readBigInt64BE()); // Get the total length of the torrent
   const pieceLength = torrent.info["piece length"]; // Get the length of each piece in the torrent
 
   const lastPieceLength = totalLength % pieceLength; // Calculate the length of the last piece
